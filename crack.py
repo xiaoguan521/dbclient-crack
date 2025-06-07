@@ -10,33 +10,62 @@ import os
 import json
 import shutil
 import re
+import sys
 from pathlib import Path
 
 def backup_file(file_path):
     """创建文件备份"""
     backup_path = str(file_path) + '.bak'
     if not os.path.exists(backup_path):
-        shutil.copy2(file_path, backup_path)
-        print(f'已创建备份文件: {backup_path}')
+        try:
+            shutil.copy2(file_path, backup_path)
+            print(f'已创建备份文件: {backup_path}')
+        except PermissionError:
+            print(f'警告: 无权限创建备份文件 {backup_path}')
+            print('请尝试使用管理员/sudo权限运行此脚本')
+            sys.exit(1)
 
 def modify_extension_js(extension_js_path):
     """修改extension.js文件"""
     print('开始修改extension.js文件...')
     
-    with open(extension_js_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    print(f'成功读取extension.js文件，大小: {len(content)} 字节')
+    if not os.path.exists(extension_js_path):
+        print(f'错误: 找不到文件 {extension_js_path}')
+        print('请确认您是否将脚本放在正确的扩展目录中')
+        sys.exit(1)
+    
+    try:
+        with open(extension_js_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        print(f'成功读取extension.js文件，大小: {len(content)} 字节')
+    except Exception as e:
+        print(f'读取文件时出错: {str(e)}')
+        sys.exit(1)
     
     # 创建备份
     backup_file(extension_js_path)
     
     # 1. 修改isPremium函数
-    content = re.sub(
-        r'static isPremium\(\) \{[\s\S]*?\}',
-        'static isPremium() { return true; }',
-        content
-    )
-    print('成功修改 isPremium 函数')
+    premium_pattern = r'static\s+isPremium\s*\(\s*\)\s*\{[\s\S]*?\}'
+    if re.search(premium_pattern, content):
+        content = re.sub(
+            premium_pattern,
+            'static isPremium() { return true; }',
+            content
+        )
+        print('成功修改 isPremium 函数')
+    else:
+        print('未找到 isPremium 函数，尝试其他模式...')
+        alt_pattern = r'isPremium\s*\(\s*\)\s*\{[\s\S]*?\}'
+        if re.search(alt_pattern, content):
+            content = re.sub(
+                alt_pattern,
+                'isPremium() { return true; }',
+                content
+            )
+            print('成功修改 isPremium 函数（替代模式）')
+        else:
+            print('警告: 无法找到 isPremium 函数')
     
     # 2. 修改isExpire函数
     content = re.sub(
@@ -93,23 +122,43 @@ def modify_extension_js(extension_js_path):
         )
     
     # 保存修改
-    with open(extension_js_path, 'w', encoding='utf-8') as f:
-        f.write(content)
-    print('成功保存修改后的extension.js文件')
+    try:
+        with open(extension_js_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        print('成功保存修改后的extension.js文件')
+    except PermissionError:
+        print(f'错误: 无权限写入文件 {extension_js_path}')
+        print('请尝试使用管理员/sudo权限运行此脚本')
+        sys.exit(1)
+    except Exception as e:
+        print(f'保存文件时出错: {str(e)}')
+        sys.exit(1)
 
 def modify_webview_assets(assets_dir):
     """修改webview中的资源文件"""
     if not os.path.exists(assets_dir):
         print(f'目录不存在: {assets_dir}')
         return
-        
-    priority_files = [
-        'connect-BtFhhlKZ.js',
-        'app-rfvkh6uB.js',
-        'Result-LfwnutEA.js',
-        'Main-CaCXinLR.js',
-        'coreStore-m1eBg2Tl.js',
-        'Plan-BHeFVyRe.js'
+    
+    print(f'找到webview资源目录: {assets_dir}')
+    
+    # 列出目录中的所有文件
+    try:
+        all_files = os.listdir(assets_dir)
+        print('目录中的文件:')
+        for file in all_files:
+            print(f'- {file}')
+    except Exception as e:
+        print(f'读取目录内容时出错: {str(e)}')
+    
+    # 优先处理的文件模式
+    priority_patterns = [
+        r'^connect-.*\.js$',
+        r'^app-.*\.js$',
+        r'^Result-.*\.js$',
+        r'^Main-.*\.js$',
+        r'^coreStore-.*\.js$',
+        r'^Plan-.*\.js$'
     ]
     
     # 获取所有JS文件
@@ -117,17 +166,17 @@ def modify_webview_assets(assets_dir):
                     if f.endswith('.js') and not f.endswith('.bak')]
     print(f'找到 {len(all_js_files)} 个JS文件')
     
-    # 合并文件列表并去重
-    files_to_process = list(set(priority_files + all_js_files))
-    
-    for filename in files_to_process:
+    # 处理所有JS文件
+    for filename in all_js_files:
         file_path = os.path.join(assets_dir, filename)
+        is_priority = any(re.match(pattern, filename) for pattern in priority_patterns)
+        
         if not os.path.exists(file_path):
             print(f'文件不存在: {filename}')
             continue
             
         try:
-            print(f'正在修改 {filename}...')
+            print(f'正在修改 {filename}{" (优先文件)" if is_priority else ""}...')
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             

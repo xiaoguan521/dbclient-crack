@@ -6,10 +6,22 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 // 获取扩展目录路径
 const extensionDir = __dirname;
 const extensionJsPath = path.join(extensionDir, 'out', 'extension.js');
+
+console.log('系统类型:', os.platform());
+console.log('扩展目录路径:', extensionDir);
+console.log('extension.js 路径:', extensionJsPath);
+
+// 检查文件是否存在
+if (!fs.existsSync(extensionJsPath)) {
+  console.error(`错误: 找不到文件 ${extensionJsPath}`);
+  console.log('请确认您是否将脚本放在正确的扩展目录中');
+  process.exit(1);
+}
 
 console.log('开始修改文件以移除付费限制...');
 
@@ -26,12 +38,20 @@ try {
   }
 
   // 1. 修改isPremium函数 - 始终返回true
-  let isPremiumRegex = /static isPremium\(\) \{[\s\S]*?\}/;
+  let isPremiumRegex = /static\s+isPremium\s*\(\s*\)\s*\{[\s\S]*?\}/;
   if (isPremiumRegex.test(extensionJs)) {
     extensionJs = extensionJs.replace(isPremiumRegex, 'static isPremium() { return true; }');
     console.log('成功修改 isPremium 函数');
   } else {
-    console.log('未找到 isPremium 函数');
+    console.log('未找到 isPremium 函数，尝试其他模式...');
+    // 尝试其他可能的模式
+    isPremiumRegex = /isPremium\s*\(\s*\)\s*\{[\s\S]*?\}/;
+    if (isPremiumRegex.test(extensionJs)) {
+      extensionJs = extensionJs.replace(isPremiumRegex, 'isPremium() { return true; }');
+      console.log('成功修改 isPremium 函数（替代模式）');
+    } else {
+      console.log('警告: 无法找到 isPremium 函数');
+    }
   }
 
   // 2. 修改isExpire函数 - 始终返回false
@@ -97,21 +117,47 @@ try {
     'async activateLicense() { return true; }'
   );
 
+  // 保存前检查文件权限
+  try {
+    fs.accessSync(path.dirname(extensionJsPath), fs.constants.W_OK);
+  } catch (err) {
+    console.error(`错误: 没有写入权限 ${path.dirname(extensionJsPath)}`);
+    console.log('请尝试使用管理员/sudo权限运行此脚本');
+    process.exit(1);
+  }
+
   // 保存修改后的文件
-  fs.writeFileSync(extensionJsPath, extensionJs);
-  console.log('成功保存修改后的extension.js文件');
+  try {
+    fs.writeFileSync(extensionJsPath, extensionJs);
+    console.log('成功保存修改后的extension.js文件');
+  } catch (err) {
+    console.error('保存文件时出错:', err);
+    console.log('请尝试使用管理员/sudo权限运行此脚本');
+    process.exit(1);
+  }
 
   // 修改webview中的相关文件
   const webviewAssetsDir = path.join(extensionDir, 'out', 'webview', 'assets');
   if (fs.existsSync(webviewAssetsDir)) {
-    // 需要重点修改的文件列表
-    const priorityFiles = [
-      'connect-BtFhhlKZ.js',  // 连接界面，从截图看这个最重要
-      'app-rfvkh6uB.js',      // 应用核心文件
-      'Result-LfwnutEA.js',   // 结果显示
-      'Main-CaCXinLR.js',     // 主界面
-      'coreStore-m1eBg2Tl.js', // 核心存储
-      'Plan-BHeFVyRe.js'      // 付费计划相关
+    console.log(`找到webview资源目录: ${webviewAssetsDir}`);
+    
+    // 列出目录中的所有文件
+    console.log('目录中的文件:');
+    try {
+      const files = fs.readdirSync(webviewAssetsDir);
+      files.forEach(file => console.log(`- ${file}`));
+    } catch (err) {
+      console.error('读取目录内容时出错:', err);
+    }
+    
+    // 需要重点修改的文件模式
+    const priorityPatterns = [
+      /^connect-.*\.js$/,  // 连接界面
+      /^app-.*\.js$/,      // 应用核心文件
+      /^Result-.*\.js$/,   // 结果显示
+      /^Main-.*\.js$/,     // 主界面
+      /^coreStore-.*\.js$/, // 核心存储
+      /^Plan-.*\.js$/      // 付费计划相关
     ];
 
     // 查找目录中所有的JS文件
@@ -124,14 +170,14 @@ try {
       console.error('读取assets目录失败:', err);
     }
 
-    // 为确保全面，同时处理所有找到的JS文件
-    const allFilesToProcess = [...new Set([...priorityFiles, ...allJsFiles])];
-
-    for (const fileName of allFilesToProcess) {
+    // 处理所有JS文件
+    for (const fileName of allJsFiles) {
       const filePath = path.join(webviewAssetsDir, fileName);
+      const isPriority = priorityPatterns.some(pattern => pattern.test(fileName));
+      
       if (fs.existsSync(filePath)) {
         try {
-          console.log(`正在修改 ${fileName}...`);
+          console.log(`正在修改 ${fileName}${isPriority ? ' (优先文件)' : ''}...`);
           let fileContent = fs.readFileSync(filePath, 'utf8');
           
           // 创建备份
