@@ -1,0 +1,79 @@
+name: Build and Release
+
+# 触发条件：
+# 1. 当创建一个新的 Release (发布) 时触发
+# 2. 也可以手动在 Actions 页面点击触发 (workflow_dispatch)
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build binary
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 定义编译矩阵：组合系统 (GOOS) 和架构 (GOARCH)
+        include:
+          # Windows
+          - goos: windows
+            goarch: amd64
+            output_name: DBClientPatcher-windows-amd64.exe
+          - goos: windows
+            goarch: arm64
+            output_name: DBClientPatcher-windows-arm64.exe
+          
+          # Linux
+          - goos: linux
+            goarch: amd64
+            output_name: DBClientPatcher-linux-amd64
+          - goos: linux
+            goarch: arm64
+            output_name: DBClientPatcher-linux-arm64
+          
+          # macOS (Darwin)
+          - goos: darwin
+            goarch: amd64
+            output_name: DBClientPatcher-macos-intel
+          - goos: darwin
+            goarch: arm64
+            output_name: DBClientPatcher-macos-apple-silicon
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22' # 或者使用 'stable'
+          check-latest: true
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0 # 关键：关闭 CGO 以实现纯静态编译
+        run: |
+          echo "Building for ${{ matrix.goos }}/${{ matrix.goarch }}..."
+          # -ldflags "-s -w" 用于去除调试信息，减小体积
+          go build -ldflags "-s -w" -o build/${{ matrix.output_name }} main.go
+
+      # 如果是手动触发，将构建产物上传到 Actions 页面供下载
+      - name: Upload Artifact (Manual Trigger)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: build/${{ matrix.output_name }}
+
+      # 如果是 Release 触发，直接将文件上传到 Release 的附件中
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/${{ matrix.output_name }}
