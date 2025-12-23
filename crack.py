@@ -29,21 +29,29 @@ MOCK_USER_DATA = """{
 
 class PatchManager:
     def __init__(self):
-        self.extension_dir = self._find_extension_dir()
+        self.extension_dirs = self._find_extension_dirs()
+        self.extension_dir = None # current working target
         
-    def _find_extension_dir(self):
-        """尝试自动查找 VSCode 扩展目录"""
+    def _find_extension_dirs(self):
+        """尝试自动查找所有已安装的扩展目录"""
         home = Path.home()
         system = platform.system()
         
-        # 标准 VSCode 扩展路径
+        # 支持的编辑器扩展路径 (VSCode, Cursor, Antigravity 等)
         possible_paths = [
+            # VSCode
             home / ".vscode" / "extensions",
-            home / ".vscode-server" / "extensions", # Remote SSH
+            home / ".vscode-server" / "extensions", 
+            # Cursor
+            home / ".cursor" / "extensions",
+            home / ".cursor-server" / "extensions",
+            # Antigravity (User Requested)
+            home / ".antigravity" / "extensions",
+            home / ".antigravity-server" / "extensions",
         ]
         
-        print("正在搜索插件目录...")
-        target_dir = None
+        print("正在搜索所有支持的编辑器插件目录...")
+        found_dirs = []
         
         for base_path in possible_paths:
             if not base_path.exists():
@@ -51,24 +59,23 @@ class PatchManager:
             # 查找匹配名称的文件夹（处理版本号不同的情况）
             for d in base_path.iterdir():
                 if d.is_dir() and d.name.startswith(TARGET_EXTENSION_NAME):
-                    target_dir = d
-                    break
-            if target_dir:
-                break
+                    print(f"   => 发现目标: {d}")
+                    found_dirs.append(d)
         
         # 如果自动查找失败，尝试使用当前目录
-        if not target_dir:
+        if not found_dirs:
             current_dir = Path(os.getcwd())
             if (current_dir / "package.json").exists() and (current_dir / "out").exists():
-                target_dir = current_dir
+                print(f"   => 使用当前目录: {current_dir}")
+                found_dirs.append(current_dir)
         
-        if not target_dir:
-            print(f"❌ 未找到插件目录: {TARGET_EXTENSION_NAME}")
-            print("请将此脚本放置在插件根目录下运行，或手动指定路径。")
+        if not found_dirs:
+            print(f"❌ 未找到任何插件目录: {TARGET_EXTENSION_NAME}")
+            print("请确认插件已安装，或将脚本放置在插件根目录下运行。")
             sys.exit(1)
             
-        print(f"✅ 定位到插件目录: {target_dir}")
-        return target_dir
+        print(f"✅ 共找到 {len(found_dirs)} 个安装位置")
+        return found_dirs
 
     def backup_file(self, file_path: Path):
         """创建备份，如果已存在备份则跳过"""
@@ -226,13 +233,17 @@ class PatchManager:
     def run(self):
         print("🚀 开始执行 Database Client 解锁脚本 (优化版)")
         print("-" * 50)
-        self.process_extension_js()
+        
+        for idx, target in enumerate(self.extension_dirs, 1):
+            self.extension_dir = target
+            print(f"\n[{idx}/{len(self.extension_dirs)}] 正在处理: {target}")
+            print("-" * 30)
+            self.process_extension_js()
+            self.process_webview_assets()
+            self.process_package_json()
+            
         print("-" * 50)
-        self.process_webview_assets()
-        print("-" * 50)
-        self.process_package_json()
-        print("-" * 50)
-        print("🎉 完成！请重启 VSCode。")
+        print("🎉 所有操作完成！请重启相应的编辑器 (VSCode/Cursor/Antigravity)。")
         print("💡 提示: 如果之前打开过 Database Client，请按 F1 -> 'Developer: Reload Window' 刷新。")
 
 if __name__ == '__main__':

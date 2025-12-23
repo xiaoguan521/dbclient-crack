@@ -22,19 +22,36 @@
 ### Windows用户
 
 1. 确保已经安装了Node.js
-2. 关闭所有VSCode窗口
-3. 将本项目的文件复制到插件目录：`%USERPROFILE%\.vscode\extensions\cweijan.vscode-mysql-client2-版本号`
+2. 关闭所有编辑器窗口
+3. 将本项目的文件复制到插件目录：
+   - VSCode: `%USERPROFILE%\.vscode\extensions\cweijan.vscode-mysql-client2-版本号`
+   - Cursor: `%USERPROFILE%\.cursor\extensions\cweijan.vscode-mysql-client2-版本号`
+   - Antigravity: `%USERPROFILE%\.antigravity\extensions\cweijan.vscode-mysql-client2-版本号`
 4. 双击运行`run_crack.bat`
-5. 等待完成后重启VSCode
+5. 等待完成后重启编辑器
 
 ### Linux/macOS用户
 
 1. 确保已经安装了Node.js
-2. 关闭所有VSCode窗口
-3. 将本项目的文件复制到插件目录：`~/.vscode/extensions/cweijan.vscode-mysql-client2-版本号`
+2. 关闭所有编辑器窗口 (VSCode/Cursor/Antigravity)
+3. 将本项目的文件复制到插件目录：
+   - VSCode: `~/.vscode/extensions/cweijan.vscode-mysql-client2-版本号`
+   - Cursor: `~/.cursor/extensions/cweijan.vscode-mysql-client2-版本号`
+   - Antigravity: `~/.antigravity/extensions/cweijan.vscode-mysql-client2-版本号`
 4. 打开终端，进入该目录
 5. 运行：`chmod +x run_crack.sh && ./run_crack.sh`
-6. 等待完成后重启VSCode
+6. 等待完成后重启编辑器
+
+### Python脚本用户 (推荐)
+
+如果您安装了Python 3，可以直接运行 `crack.py`，它会自动搜索以下位置的插件：
+- VSCode: `~/.vscode/extensions`
+- Cursor: `~/.cursor/extensions`
+- Antigravity: `~/.antigravity/extensions`
+
+使用方法：
+1. 在任意位置运行: `python3 crack.py`
+2. 脚本会自动查找并修补插件 
 
 ## 常见问题
 

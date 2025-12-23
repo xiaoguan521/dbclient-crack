@@ -41,23 +41,37 @@ func logError(format string, a ...interface{}) {
 
 // --- 核心逻辑 ---
 
-func findExtensionDir(customPath string) (string, error) {
+func findExtensionDirs(customPath string) ([]string, error) {
 	if customPath != "" {
-		return customPath, nil
+		return []string{customPath}, nil
 	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	searchPaths := []string{}
+	// Common paths for all OS
+	commonPaths := []string{
+		filepath.Join(homeDir, ".vscode", "extensions"),
+		// Cursor
+		filepath.Join(homeDir, ".cursor", "extensions"),
+		// Antigravity
+		filepath.Join(homeDir, ".antigravity", "extensions"),
+	}
+	searchPaths = append(searchPaths, commonPaths...)
+
 	if runtime.GOOS == "windows" {
-		searchPaths = append(searchPaths, filepath.Join(homeDir, ".vscode", "extensions"))
+		// Windows specific additional paths if any
+		searchPaths = append(searchPaths, filepath.Join(homeDir, ".cursor-server", "extensions"))
 	} else {
-		searchPaths = append(searchPaths, filepath.Join(homeDir, ".vscode", "extensions"))
+		// Linux/Mac specific
 		searchPaths = append(searchPaths, filepath.Join(homeDir, ".vscode-server", "extensions"))
+		searchPaths = append(searchPaths, filepath.Join(homeDir, ".cursor-server", "extensions"))
+		searchPaths = append(searchPaths, filepath.Join(homeDir, ".antigravity-server", "extensions"))
 	}
 
+	foundDirs := []string{}
 	for _, basePath := range searchPaths {
 		entries, err := os.ReadDir(basePath)
 		if err != nil {
@@ -65,16 +79,22 @@ func findExtensionDir(customPath string) (string, error) {
 		}
 		for _, entry := range entries {
 			if entry.IsDir() && strings.HasPrefix(entry.Name(), TargetExtensionName) {
-				return filepath.Join(basePath, entry.Name()), nil
+				foundDirs = append(foundDirs, filepath.Join(basePath, entry.Name()))
 			}
 		}
 	}
 	// 尝试当前目录
 	if _, err := os.Stat("package.json"); err == nil {
-		cwd, _ := os.Getwd()
-		return cwd, nil
+		if _, err := os.Stat("out"); err == nil {
+			cwd, _ := os.Getwd()
+			foundDirs = append(foundDirs, cwd)
+		}
 	}
-	return "", fmt.Errorf("未自动找到插件目录，请使用 -path 参数指定")
+	
+	if len(foundDirs) == 0 {
+		return nil, fmt.Errorf("未自动找到任何插件目录，请使用 -path 参数指定")
+	}
+	return foundDirs, nil
 }
 
 func backupFile(path string) {
@@ -208,25 +228,31 @@ func main() {
 	fmt.Println("   Database Client 解锁工具 (Go CLI版)    ")
 	fmt.Println("-------------------------------------------")
 
-	targetDir, err := findExtensionDir(*pathFlag)
+	targetDirs, err := findExtensionDirs(*pathFlag)
 	if err != nil {
 		logError("%v", err)
 		pause()
 		return
 	}
 
-	logInfo("目标目录: %s", targetDir)
+	logInfo("共找到 %d 个安装位置", len(targetDirs))
 
 	if *restoreFlag {
 		logInfo("开始还原...")
-		restore(targetDir)
+		for _, dir := range targetDirs {
+			logInfo(">>> 正在还原: %s", dir)
+			restore(dir)
+		}
 	} else {
 		logInfo("开始破解...")
-		applyPatch(targetDir, *forceFlag)
+		for _, dir := range targetDirs {
+			logInfo(">>> 正在处理: %s", dir)
+			applyPatch(dir, *forceFlag)
+		}
 	}
 
 	fmt.Println("-------------------------------------------")
-	logInfo("操作完成！请重启 VSCode (F1 -> Reload Window)")
+	logInfo("操作完成！请重启相应的编辑器 (VSCode/Cursor/Antigravity)")
 	pause()
 }
 
